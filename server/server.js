@@ -1,71 +1,162 @@
 const express = require('express');
-const { google } = require('googleapis');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const dotenv = require('dotenv');
+const mongoose = require('mongoose');
+const session = require('express-session');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const fs = require('fs');
-
-dotenv.config();
+const path = require('path');
+const cors = require('cors');
+const { google } = require('googleapis');
+const User = require('./models/User');
 
 const app = express();
-app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static('client')); // Serve static files from the client directory
+const PORT = 5000;
 
-const PORT = process.env.PORT || 5000;
+// Middleware for parsing JSON
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Load client secrets from a local file
-let credentials;
-try {
-    credentials = JSON.parse(fs.readFileSync('server/credentials.json'));
-} catch (error) {
-    console.error("Error reading credentials.json:", error);
-}
+// CORS configuration
+app.use(cors({
+    origin: 'http://localhost:3000', // Adjust this if your client is served from a different URL
+    credentials: true
+}));
 
-// Create an OAuth2 client
-const { client_secret, client_id, redirect_uris } = credentials.installed;
-const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+// Serve static files (if you have any)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Session configuration
+app.use(session({
+    secret: 'your-session-secret',
+    resave: false,
+    saveUninitialized: true,
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// MongoDB connection
+mongoose.connect('mongodb://localhost:27017/admin', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB connected'))
+.catch(err => console.error('MongoDB connection error:', err));
+
+// Load credentials
+const credentialsPath = path.join(__dirname, 'credentials.json');
+const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
+
+// Passport Google OAuth configuration
+passport.use(new GoogleStrategy({
+    clientID: credentials.installed.client_id,
+    clientSecret: credentials.installed.client_secret,
+    callbackURL: credentials.installed.redirect_uris[0],
+}, async (accessToken, refreshToken, profile, done) => {
+    try {
+        let user = await User.findOne({ googleId: profile.id });
+        
+        if (user) {
+            user.accessToken = accessToken;
+            if (refreshToken) user.refreshToken = refreshToken;
+            await user.save();
+        } else {
+            user = new User({
+                googleId: profile.id,
+                displayName: profile.displayName,
+                email: profile.emails[0].value,
+                accessToken: accessToken,
+                refreshToken: refreshToken || null,
+            });
+            await user.save();
+        }
+        return done(null, user);
+    } catch (err) {
+        console.error('Error in Google Strategy:', err);
+        return done(err);
+    }
+}));
+
+passport.serializeUser((user, done) => {
+    done(null, user);
+});
+
+passport.deserializeUser((user, done) => {
+    done(null, user);
+});
 
 // Root route
 app.get('/', (req, res) => {
-    res.send('Google Calendar API Server is running!');
+    res.send(`
+        <div style="text-align:center; margin-top: 20%;">
+            <h1>Welcome to the Google Calendar App</h1>
+            <a href="/auth/google"><button style="padding: 10px 20px;">Login with Google</button></a>
+        </div>
+    `);
 });
 
-// Endpoint to get the auth URL
-app.get('/auth/google', (req, res) => {
-    const authUrl = oAuth2Client.generateAuthUrl({
-        access_type: 'offline',
-        scope: ['https://www.googleapis.com/auth/calendar'],
+// Google Auth routes
+app.get('/auth/google', passport.authenticate('google', {
+    scope: ['profile', 'email', 'https://www.googleapis.com/auth/calendar']
+}));
+
+app.get('/auth/google/callback', 
+    passport.authenticate('google', { failureRedirect: '/' }),
+    (req, res) => {
+        res.redirect('http://localhost:3000/add-event');
+    }
+);
+
+// Add event form
+app.post('/api/add-event', async (req, res) => {
+    if (!req.isAuthenticated()) {
+        return res.status(403).json({ error: 'User not authenticated' });
+    }
+
+    const { title, description, start, end } = req.body;
+
+    // OAuth2 client for Google Calendar API
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ 
+        access_token: req.user.accessToken, 
+        refresh_token: req.user.refreshToken 
     });
-    res.json({ url: authUrl });
+
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    try {
+        const event = {
+            summary: title,
+            description: description,
+            start: {
+                dateTime: new Date(start).toISOString(),
+                timeZone: 'America/Los_Angeles', // Change as needed
+            },
+            end: {
+                dateTime: new Date(end).toISOString(),
+                timeZone: 'America/Los_Angeles', // Change as needed
+            },
+        };
+
+        await calendar.events.insert({
+            calendarId: 'primary',
+            resource: event,
+        });
+
+        res.json({ message: 'Event added to Google Calendar successfully!' });
+    } catch (error) {
+        console.error('Error adding event:', error);
+        res.status(500).json({ error: 'Failed to add event to Google Calendar' });
+    }
 });
 
-// Endpoint to handle the OAuth callback
-app.get('/auth/google/callback', async (req, res) => {
-    const { code } = req.query;
-    const { tokens } = await oAuth2Client.getToken(code);
-    oAuth2Client.setCredentials(tokens);
-
-    // Save tokens to a secure location (e.g., database)
-    res.json(tokens);
+// Catch-all route for 404 errors
+app.use((req, res, next) => {
+    res.status(404).json({ error: 'Not Found' });
 });
 
-// Endpoint to create an event
-app.post('/create-event', async (req, res) => {
-    const { event, tokens } = req.body;
-    oAuth2Client.setCredentials(tokens);
-    
-    const calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
-    
-    calendar.events.insert({
-        calendarId: 'primary',
-        resource: event,
-    }, (err, event) => {
-        if (err) return res.status(500).send('Error creating event: ' + err);
-        res.json({ success: true, event: event.data });
-    });
-});
-
+// Start the server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
