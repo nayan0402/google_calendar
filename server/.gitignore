@@ -1,0 +1,37 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# dotenv environment variables
+.env
+.env.local
+.env.*.local
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Build directories
+dist/
+build/
+
+# Miscellaneous
+*.sublime-workspace
+*.sublime-project
+
+# Ignore credentials.json
+credentials.json
