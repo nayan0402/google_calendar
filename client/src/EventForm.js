@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 const EventForm = () => {
+    const [showForm, setShowForm] = useState(false); // New state to control form visibility
     const [event, setEvent] = useState('');
     const [description, setDescription] = useState('');
     const [start, setStart] = useState('');
@@ -44,37 +45,44 @@ const EventForm = () => {
 
     return (
         <div className="form-container">
-            <h1>Add Event</h1>
-            {successMessage && <p className="success">{successMessage}</p>}
-            {error && <p className="error">{error}</p>}
-            <form onSubmit={handleSubmit}>
-                <input
-                    type="text"
-                    placeholder="Event Title"
-                    value={event}
-                    onChange={(e) => setEvent(e.target.value)}
-                    required
-                />
-                <input
-                    type="text"
-                    placeholder="Event Description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                />
-                <input
-                    type="datetime-local"
-                    value={start}
-                    onChange={(e) => setStart(e.target.value)}
-                    required
-                />
-                <input
-                    type="datetime-local"
-                    value={end}
-                    onChange={(e) => setEnd(e.target.value)}
-                    required
-                />
-                <button type="submit">Add Event</button>
-            </form>
+            <h1>Event Management</h1>
+            <button onClick={() => setShowForm(true)}>Create Calendar Event</button>
+
+            {showForm && (
+                <div>
+                    <h2>Add Event</h2>
+                    {successMessage && <p className="success">{successMessage}</p>}
+                    {error && <p className="error">{error}</p>}
+                    <form onSubmit={handleSubmit}>
+                        <input
+                            type="text"
+                            placeholder="Event Title"
+                            value={event}
+                            onChange={(e) => setEvent(e.target.value)}
+                            required
+                        />
+                        <input
+                            type="text"
+                            placeholder="Event Description"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                        />
+                        <input
+                            type="datetime-local"
+                            value={start}
+                            onChange={(e) => setStart(e.target.value)}
+                            required
+                        />
+                        <input
+                            type="datetime-local"
+                            value={end}
+                            onChange={(e) => setEnd(e.target.value)}
+                            required
+                        />
+                        <button type="submit">Add Event</button>
+                    </form>
+                </div>
+            )}
         </div>
     );
 };

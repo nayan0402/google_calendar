@@ -87,14 +87,7 @@ passport.deserializeUser((user, done) => {
 });
 
 // Root route
-app.get('/', (req, res) => {
-    res.send(`
-        <div style="text-align:center; margin-top: 20%;">
-            <h1>Welcome to the Google Calendar App</h1>
-            <a href="/auth/google"><button style="padding: 10px 20px;">Login with Google</button></a>
-        </div>
-    `);
-});
+
 
 // Google Auth routes
 app.get('/auth/google', passport.authenticate('google', {
